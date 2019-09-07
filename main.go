@@ -16,6 +16,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	quic "github.com/lucas-clemente/quic-go"
 )
@@ -178,11 +179,25 @@ func quicServer() error {
 }
 
 func quicClient() error {
+	for {
+		err := quicClientSession()
+		if err != nil {
+			log.Println("quicClientSession:", err)
+		}
+		time.Sleep(time.Second)
+	}
+	return nil
+}
+
+func quicClientSession() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"quic-echo-example"},
 	}
-	sess, err := quic.DialAddr(*qhostaddr, tlsConf, qconfig)
+	sess, err := quic.DialAddrContext(ctx, *qhostaddr, tlsConf, qconfig)
 	if err != nil {
 		return err
 	}
@@ -215,7 +230,8 @@ func quicClient() error {
 		}
 		log.Println(sess.RemoteAddr(), stream.StreamID(), "stream proxy", proxy)
 
-		targetstream, err := net.Dial("tcp", proxy.Addr)
+		d := net.Dialer{}
+		targetstream, err := d.DialContext(ctx, "tcp", proxy.Addr)
 		if err != nil {
 			log.Println(sess.RemoteAddr(), stream.StreamID(), "dial", proxy.Addr, "failed:", err)
 			return
@@ -240,8 +256,9 @@ func quicClient() error {
 	}
 
 	go func() {
+		defer cancel()
 		for {
-			stream, err := sess.AcceptStream(context.Background())
+			stream, err := sess.AcceptStream(ctx)
 			if err != nil {
 				log.Println(sess.RemoteAddr(), "accept failed:", err)
 				return
@@ -292,7 +309,8 @@ func quicClient() error {
 		targetid := seg[1]
 		targetaddr := seg[2]
 
-		l, err := net.Listen("tcp", localaddr)
+		var lc net.ListenConfig
+		l, err := lc.Listen(ctx, "tcp", localaddr)
 		if err != nil {
 			log.Println("listen", localaddr, "failed")
 			return
@@ -312,7 +330,7 @@ func quicClient() error {
 		go handleLocalListen(pair)
 	}
 
-	<-context.Background().Done()
+	<-ctx.Done()
 	return nil
 }
 
