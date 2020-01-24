@@ -14,6 +14,7 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -186,7 +187,6 @@ func quicClient() error {
 		}
 		time.Sleep(time.Second)
 	}
-	return nil
 }
 
 func quicClientSession() error {
@@ -261,6 +261,7 @@ func quicClientSession() error {
 			stream, err := sess.AcceptStream(ctx)
 			if err != nil {
 				log.Println(sess.RemoteAddr(), "accept failed:", err)
+				os.Exit(1)
 				return
 			}
 			go handleStream(sess, stream)
